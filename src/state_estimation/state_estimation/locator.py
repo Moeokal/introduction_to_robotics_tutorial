@@ -32,13 +32,32 @@ class LocatorNode(Node):
         msg.header.frame_id = 'world'
         self.position_pub.publish(msg)
     
+    def iterate(self, estimate):
+        R = np.zeros(len(self.anchor_ranges))
+        delta_R = np.zeros((len(self.anchor_ranges), 3))
+        i = 0
+        for a in self.anchor_ranges:
+            anchor_pos = np.array([a.anchor.x, a.anchor.y, a.anchor.z])
+            R[i] = a.range - np.linalg.norm(estimate - anchor_pos)
+            delta_R[i, :] = -(estimate - anchor_pos) / np.linalg.norm(estimate - anchor_pos)
+            i += 1
+
+        new_x = estimate - np.linalg.pinv(delta_R) @ R
+        return new_x
+
     def calculate_position(self):
         if not len(self.anchor_ranges):
             return 0.0, 0.0, 0.0
         
         # YOUR CODE GOES HERE:
-        x = np.mean([r.range for r in self.anchor_ranges]) - 0.5
-        return x, 0.0, 0.0
+
+        estimate = np.zeros(3)
+        for i in range(10):
+            estimate = self.iterate(estimate)
+
+        self.get_logger().info(f"estimate: {estimate}")
+
+        return estimate[0], estimate[1], estimate[2]
 
 
 def main(args=None):

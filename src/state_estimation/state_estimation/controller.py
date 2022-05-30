@@ -1,8 +1,17 @@
 import rclpy
+import math
+import numpy as np
+
 from rclpy.node import Node
 
 from geometry_msgs.msg import Twist, PoseStamped, PointStamped
 from sensor_msgs.msg import LaserScan
+
+def normalize(vector: np.ndarray) -> np.ndarray:
+    return vector / np.linalg.norm(vector)
+
+def veclength(vector: np.ndarray) -> np.float64:
+    return np.linalg.norm(vector)
 
 class VelocityController(Node):
 
@@ -12,32 +21,57 @@ class VelocityController(Node):
         self.forward_distance = 0
         self.goal = None
         self.position = None
+        
+        self.last_positions = []
+        #self.last_angular_velocities = None
+        
         self.create_subscription(LaserScan, 'scan', self.laser_cb, rclpy.qos.qos_profile_sensor_data)
         self.create_subscription(PoseStamped, 'nav/goal', self.goal_cb, 10)
         self.create_subscription(PointStamped, 'position', self.position_cb, 10)
         self.create_timer(0.1, self.timer_cb)
         self.get_logger().info('controller node started')
-        
+    
+    def calculate_direction(self):
+        direction = self.last_positions[-1] - self.last_positions[-2] 
+        return direction / np.linalg.norm(direction)
+
     def timer_cb(self):
         msg = Twist()
-        x = self.forward_distance - 0.3
-        x = x if x < 0.1 else 0.1
-        x = x if x >= 0 else 0.0
-        msg.linear.x = x
+
+        if self.position is None:
+            return
+        if(len(self.last_positions)>5):    
+         if(self.forward_distance > 0.5):
+            diff_to_goal = self.goal - self.position
+
+            current_dir = self.calculate_direction()
+            goal_dir = normalize(diff_to_goal)
+
+            omega1 = math.atan2(current_dir[1], current_dir[0])
+            omega2 = math.atan2(goal_dir[1], goal_dir[0])
+
+            omega = omega2 - omega1
+
+            msg.linear.x = min(max(veclength(diff_to_goal) - 0.2, 0.0), 0.05)
+            msg.angular.z = min(max(omega*0.25, -0.2), 0.2)
+
         self.publisher.publish(msg)
-    
+
     def goal_cb(self, msg):
-        goal = msg.pose.position.x, msg.pose.position.y
-        if self.goal != goal:
+        goal = np.array([msg.pose.position.x, msg.pose.position.y, 0.0])
+        if (self.goal is None) or not np.allclose(goal, self.goal):
             self.get_logger().info(f'received a new goal: (x={goal[0]}, y={goal[1]})')
             self.goal = goal
     
     def laser_cb(self, msg):
         self.forward_distance = msg.ranges[0]
+        self.right_distance = msg.ranges[270]
+        self.left_distance = msg.ranges[90]
         
     def position_cb(self, msg):
-        self.position = msg.point.x, msg.point.y
-
+        pos2 = np.array([msg.point.x, msg.point.y, msg.point.z])
+        self.position = pos2
+        self.last_positions.append(pos2)
 
 def main(args=None):
     rclpy.init(args=args)
