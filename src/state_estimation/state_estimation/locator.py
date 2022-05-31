@@ -19,7 +19,7 @@ class LocatorNode(Node):
         
     def range_cb(self, msg):
         self.anchor_ranges.append(msg)
-        self.anchor_ranges = self.anchor_ranges[-10:]
+        self.anchor_ranges = self.anchor_ranges[-32:]
         if not self.initialized:
             self.initialized = True
             self.get_logger().info('first range received')
@@ -38,8 +38,11 @@ class LocatorNode(Node):
         i = 0
         for a in self.anchor_ranges:
             anchor_pos = np.array([a.anchor.x, a.anchor.y, a.anchor.z])
-            R[i] = a.range - np.linalg.norm(estimate - anchor_pos)
-            delta_R[i, :] = -(estimate - anchor_pos) / np.linalg.norm(estimate - anchor_pos)
+            
+            diff = estimate - anchor_pos
+            
+            R[i] = a.range - np.linalg.norm(diff)
+            delta_R[i, :] = -diff / np.linalg.norm(diff)
             i += 1
 
         new_x = estimate - np.linalg.pinv(delta_R) @ R
@@ -51,8 +54,8 @@ class LocatorNode(Node):
         
         # YOUR CODE GOES HERE:
 
-        estimate = np.zeros(3)
-        for i in range(10):
+        estimate = np.array([0.1, 0.1, 0.1])
+        for i in range(30):
             estimate = self.iterate(estimate)
 
         self.get_logger().info(f"estimate: {estimate}")
